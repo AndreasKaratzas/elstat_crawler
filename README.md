@@ -1,2 +1,2 @@
-# example_crawler
+# Python Crawler
 Project for my big data university course 
