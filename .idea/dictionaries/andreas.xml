@@ -2,8 +2,10 @@
   <dictionary name="andreas">
     <words>
       <w>lxml</w>
+      <w>publicationsportlet</w>
       <w>webbrowser</w>
       <w>wget</w>
+      <w>xlrd</w>
       <w>xlsx</w>
     </words>
   </dictionary>
