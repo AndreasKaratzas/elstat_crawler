@@ -1,0 +1,329 @@
+import itertools
+import os
+import pathlib
+
+import mysql.connector
+import matplotlib.pyplot
+import numpy
+import pandas
+import requests
+import xlrd
+import codecs
+from bs4 import BeautifulSoup
+from mysql.connector import errorcode
+from transliterate import slugify
+
+
+def xlrd2dataframe(xl_file, sheet_names):
+    for sheet in sheet_names:
+        yield pandas.read_excel(xl_file, sheet_name=sheet, engine='xlrd',
+                                header=None, index_col=False).assign(source=sheet)
+        xl_file.unload_sheet(sheet)
+
+
+def preprocess_data():
+    local_file_database = [f for f in os.listdir(str(pathlib.Path().absolute()) + '\\scraper_data')
+                           if os.path.isfile(os.path.join(str(str(pathlib.Path().absolute()) + '\\scraper_data'), f))]
+    local_file_database.sort()
+
+    data = pandas.DataFrame()
+    months = ['ΙΑΝ', 'ΦΕΒ', 'ΜΑΡ', 'ΑΠΡ', 'ΜΑΙ', 'ΙΟΥΝ', 'ΙΟΥΛ', 'ΑΥΓ', 'ΣΕΠΤ', 'ΟΚΤ', 'ΝΟΕΜΒ', 'ΔΕΚΕΜ']
+
+    for idx in range(0, len(local_file_database), 3):
+        result = pandas.DataFrame()
+
+        for month in months:
+            year = local_file_database[idx][0:4]
+
+            arr = pandas.read_excel(pathlib.Path(str(pathlib.Path().absolute()) +
+                                                 '\\scraper_data\\' + local_file_database[idx + 1]), header=None,
+                                    index_col=False).dropna().drop(columns=[0])
+            arr = arr[arr[8] == 'ΙΑΝ'].reset_index(drop=True)
+            arr[1] = arr[1].map(lambda x: x.rstrip('.'))
+            arr = arr[arr[1].to_numpy(dtype=numpy.int64) > arr.index]
+            arr[4] = numpy.round(arr[4].astype(numpy.float64)).astype(numpy.int64)
+            arr[7] = arr[7].astype(numpy.float16)
+            arr = arr.drop(columns=[1, 3, 5, 6, 8]).rename(columns={2: "country", 4: "tourists", 7: "percentage"})
+
+            tr = pandas.read_excel(pathlib.Path(str(pathlib.Path().absolute()) +
+                                                '\\scraper_data\\' + local_file_database[idx]), header=None,
+                                   index_col=False).dropna().drop(columns=[0])
+            tr = tr[tr[8] == 'ΙΑΝ'].reset_index(drop=True)
+            tr[1] = tr[1].map(lambda x: x.rstrip('.'))
+            tr = tr[tr[1].to_numpy(dtype=numpy.int64) > tr.index]
+            tr = tr.drop(columns=[1, 7, 8]).rename(
+                columns={2: "country", 3: "airplane", 4: "train", 5: "ship", 6: "car"})
+            tr["airplane"] = numpy.round(tr["airplane"].astype(numpy.float64)).astype(numpy.int64)
+            tr["train"] = numpy.round(tr["train"].astype(numpy.float64)).astype(numpy.int64)
+            tr["ship"] = numpy.round(tr["ship"].astype(numpy.float64)).astype(numpy.int64)
+            tr["car"] = numpy.round(tr["car"].astype(numpy.float64)).astype(numpy.int64)
+
+            month_df = pandas.merge(arr, tr, on='country')
+            month_df['month'] = month
+            result = pandas.concat([result, month_df])
+
+        result['year'] = numpy.int16(year)
+        data = pandas.concat([data, result])
+
+    data = data.reset_index(drop=True)
+
+    if not os.path.exists(str(pathlib.Path().absolute()) + '\\preprocessed_data'):
+        os.makedirs(str(pathlib.Path().absolute()) + '\\preprocessed_data')
+
+    filename = pathlib.Path(str(pathlib.Path().absolute()) + '\\preprocessed_data\\data.csv')
+
+    if not filename.is_file():
+        data.to_csv(str(pathlib.Path().absolute()) + '\\preprocessed_data\\data.csv', index=False, encoding='utf-8-sig')
+
+
+def encode_file():
+    BUFSIZE = 4096
+    BOMLEN = len(codecs.BOM_UTF8)
+
+    path = pathlib.Path(str(pathlib.Path().absolute()) + '\\preprocessed_data\\data.csv')
+    with open(path, "r+b") as fp:
+        chunk = fp.read(BUFSIZE)
+        if chunk.startswith(codecs.BOM_UTF8):
+            i = 0
+            chunk = chunk[BOMLEN:]
+            while chunk:
+                fp.seek(i)
+                fp.write(chunk)
+                i += len(chunk)
+                fp.seek(BOMLEN, os.SEEK_CUR)
+                chunk = fp.read(BUFSIZE)
+            fp.seek(-BOMLEN, os.SEEK_CUR)
+            fp.truncate()
+
+
+def graph_1():
+    # import data
+    filename = pathlib.Path(str(pathlib.Path().absolute()) + '\\preprocessed_data\\data.csv')
+    data = pandas.read_csv(filename)
+    x = numpy.zeros(5, dtype=numpy.int64)
+    y = numpy.zeros(5, dtype=numpy.int64)
+    for idx, year in enumerate(range(2011, 2016)):
+        x[idx] = int(year)
+        y[idx] = int(sum(data[data.year == year].tourists))
+    labels = x
+    matplotlib.pyplot.plot(x, y)
+    matplotlib.pyplot.xlabel('Year')
+    matplotlib.pyplot.ylabel('Tourists')
+    matplotlib.pyplot.savefig('graph_1.png')
+
+
+def graph_2():
+    # import data
+    filename = pathlib.Path(str(pathlib.Path().absolute()) + '\\preprocessed_data\\data.csv')
+    data = pandas.read_csv(filename)
+    x = numpy.zeros(len(data.country.unique()), dtype=numpy.int64)
+    y = numpy.zeros(len(data.country.unique()), dtype=numpy.int64)
+    for idx, country in enumerate(data.country.unique()):
+        x[idx] = idx
+        y[idx] = sum(data[data.country == country].tourists)
+    labels = data.country.unique()
+    matplotlib.pyplot.figure(figsize=(25, 15))
+    matplotlib.pyplot.plot(x, y)
+    matplotlib.pyplot.xticks(x, labels, rotation=70)
+    matplotlib.pyplot.margins(0.01)
+    matplotlib.pyplot.subplots_adjust(bottom=0.15)
+    matplotlib.pyplot.xlabel('Country')
+    matplotlib.pyplot.ylabel('Tourists')
+    matplotlib.pyplot.savefig('graph_2.png')
+
+
+def graph_3():
+    # import data
+    filename = pathlib.Path(str(pathlib.Path().absolute()) + '\\preprocessed_data\\data.csv')
+    data = pandas.read_csv(filename)
+    x = numpy.arange(1, len(data.columns[3:7]) + 1, dtype=numpy.int64)
+    y = numpy.zeros(4, dtype=numpy.int64)
+    for idx, tr_way in enumerate(data.columns[3:7]):
+        y[idx] = sum(data[tr_way])
+    labels = data.columns[3:7]
+    matplotlib.pyplot.plot(x, y)
+    matplotlib.pyplot.xticks(x, labels, rotation=45)
+    matplotlib.pyplot.margins(0.01)
+    matplotlib.pyplot.subplots_adjust(bottom=0.2)
+    matplotlib.pyplot.xlabel('Means of Transport')
+    matplotlib.pyplot.ylabel('Tourists')
+    matplotlib.pyplot.savefig('graph_3.png')
+
+
+def graph_4():
+    # import data
+    filename = pathlib.Path(str(pathlib.Path().absolute()) + '\\preprocessed_data\\data.csv')
+    data = pandas.read_csv(filename)
+    quarters = numpy.split(data.month.unique(), 4)
+    x = numpy.arange(1, len(quarters) + 1, dtype=numpy.int64)
+    y = numpy.zeros(4, dtype=numpy.int64)
+    labels = list()
+    for idx, quarter in enumerate(quarters):
+        y[idx] = sum(data[data.month.isin(list(quarter))].tourists)
+        labels.append(' '.join(list(quarter)))
+    matplotlib.pyplot.plot(x, y)
+    matplotlib.pyplot.xticks(x, labels, rotation=45)
+    matplotlib.pyplot.margins(0.01)
+    matplotlib.pyplot.subplots_adjust(bottom=0.3)
+    matplotlib.pyplot.xlabel('Quarter')
+    matplotlib.pyplot.ylabel('Tourists')
+    matplotlib.pyplot.savefig('graph_4.png')
+
+
+def export_graph_data():
+    graph_1()
+    graph_2()
+    graph_3()
+    graph_4()
+
+
+def insert2mysql(id, country, tourists, percentage, airplane, train, ship, car, month, year):
+    try:
+        connection = mysql.connector.connect(host='localhost',
+                                             database='elstat',
+                                             user='root',
+                                             password='CeiD/16.')
+        cursor = connection.cursor()
+        query = """INSERT INTO records (id, country, tourists, percentage, airplane, train, ship, car, month, year) 
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) """
+
+        record = (id, country, tourists, percentage, airplane, train, ship, car, month, year)
+        cursor.execute(query, record)
+        connection.commit()
+
+    except mysql.connector.Error as error:
+        print("Failed to insert into MySQL table {}".format(error))
+
+    finally:
+        if connection.is_connected():
+            cursor.close()
+            connection.close()
+
+
+def upload2mysql(evaluate):
+    # create database
+    try:
+        connection = mysql.connector.connect(user='root', password='CeiD/16.',
+                                             host='127.0.0.1')
+        cursor = connection.cursor()
+        cursor.execute("CREATE DATABASE IF NOT EXISTS elstat CHARACTER SET utf8mb4;")
+        connection.commit()
+        cursor.close()
+        connection.close()
+
+    except mysql.connector.Error as err:
+        if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
+            print("Something is wrong with your user name or password")
+        elif err.errno == errorcode.ER_BAD_DB_ERROR:
+            print("Database does not exist")
+        else:
+            print(err)
+    # create table
+    try:
+        connection = mysql.connector.connect(user='root', password='CeiD/16.',
+                                             host='127.0.0.1',
+                                             db='elstat')
+        cursor = connection.cursor()
+        cursor.execute("CREATE TABLE records ( "
+                       "id INT NOT NULL, "
+                       "country VARCHAR(30) NOT NULL, "
+                       "tourists INT NOT NULL, "
+                       "percentage DOUBLE NOT NULL, "
+                       "airplane INT NOT NULL, "
+                       "train INT NOT NULL, "
+                       "ship INT NOT NULL, "
+                       "car INT NOT NULL, "
+                       "month VARCHAR(7) NOT NULL, "
+                       "year VARCHAR(5) NOT NULL, "
+                       "PRIMARY KEY (id)"
+                       ")ENGINE=INNODB;")
+
+        connection.commit()
+        cursor.close()
+        connection.close()
+
+    except mysql.connector.Error as err:
+        if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
+            print("Something is wrong with your user name or password")
+        elif err.errno == errorcode.ER_BAD_DB_ERROR:
+            print("Database does not exist")
+        else:
+            print(err)
+
+    # insert data
+    filename = pathlib.Path(str(pathlib.Path().absolute()) + '\\preprocessed_data\\data.csv')
+    data = pandas.read_csv(filename)
+    # Connect to the database
+    connection = mysql.connector.connect(host='localhost',
+                                         user='root',
+                                         password='CeiD/16.',
+                                         db='elstat')
+
+    # create cursor
+    cursor = connection.cursor()
+
+    for id in range(data.shape[0]):
+        country, tourists, percentage, airplane, train, ship, car, month, year = data.iloc[id]
+        insert2mysql(int(id), country, int(tourists), float(percentage), int(airplane), int(train), int(ship),
+                     int(car), month, int(year))
+
+    # evaluate
+    if evaluate:
+        sql = "SELECT * FROM records LIMIT 20"
+        cursor.execute(sql)
+
+        # Fetch all the records
+        result = cursor.fetchall()
+        for rec in result:
+            print(rec)
+
+    connection.commit()
+    cursor.close()
+    connection.close()
+
+
+def scrap_elstat_data():
+    arrivals_itr_product = itertools.product(['https://www.statistics.gr/el/statistics/-/publication/STO04/'],
+                                             numpy.arange(2011, 2016, dtype=numpy.int64).tolist(),
+                                             ['-Q4'])
+
+    links = list()
+    ids = list()
+
+    for tpl in arrivals_itr_product:
+        link = "".join(list(map("".join, list(str(element) for element in tpl))))
+        links.append(link)
+        ids.append(str(tpl[1]))
+
+    for link in links:
+        data = requests.get(link).text
+        soup = BeautifulSoup(data, 'lxml')
+        table = soup.find('div', {"id": "_documents_WAR_publicationsportlet_INSTANCE_VBZOni0vs5VJ_"})
+        rows = table.find_all('tr', recursive=True)
+        for row in rows:
+            r = requests.get(row.find('a').get('href'))
+            workbook_xlrd = xlrd.open_workbook(file_contents=r.content)
+            workbook_df = pandas.concat(xlrd2dataframe(workbook_xlrd, workbook_xlrd.sheet_names()), ignore_index=True)
+
+            if not os.path.exists(str(pathlib.Path().absolute()) + '\\scraper_data'):
+                os.makedirs(str(pathlib.Path().absolute()) + '\\scraper_data')
+
+            filename = pathlib.Path(str(pathlib.Path().absolute()) + '\\scraper_data\\' + ids[0] + '-' +
+                                    slugify(''.join(c for c in row.text.strip() if not c.isdigit())) + '.xlsx')
+
+            if not filename.is_file():
+                workbook_df.to_excel(filename)
+
+        del ids[0]
+
+
+def main():
+    scrap_elstat_data()
+    preprocess_data()
+    encode_file()
+    upload2mysql(evaluate=True)
+    export_graph_data()
+
+
+if __name__ == '__main__':
+    main()

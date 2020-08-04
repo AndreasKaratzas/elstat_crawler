@@ -1,14 +1,14 @@
+import itertools
 import os
-import xlrd
+import pathlib
+
+import mysql.connector
 import numpy
 import pandas
-import pathlib
 import requests
-import itertools
-import mysql.connector
+import xlrd
 from bs4 import BeautifulSoup
 from mysql.connector import errorcode
-from transliterate import slugify
 
 
 def xlrd2dataframe(xl_file, sheet_names):
