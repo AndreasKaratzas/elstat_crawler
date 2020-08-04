@@ -14,68 +14,92 @@ from mysql.connector import errorcode
 from transliterate import slugify
 
 
+# function that converts xlrd object into pandas dataframe
 def xlrd2dataframe(xl_file, sheet_names):
     for sheet in sheet_names:
+        # minimize memory usage with the yield command
         yield pandas.read_excel(xl_file, sheet_name=sheet, engine='xlrd',
                                 header=None, index_col=False).assign(source=sheet)
         xl_file.unload_sheet(sheet)
 
 
+# function to preprocess scraped data
 def preprocess_data():
+    # scan the directory with the scraped data
     local_file_database = [f for f in os.listdir(str(pathlib.Path().absolute()) + '\\scraper_data')
                            if os.path.isfile(os.path.join(str(str(pathlib.Path().absolute()) + '\\scraper_data'), f))]
+    # filenames are similar, so we can sort them and manage them efficiently
     local_file_database.sort()
-
+    # create the dataframe to store the preprocessed data
     data = pandas.DataFrame()
+    # initialize keys based on xlsx sheet names
     months = ['ΙΑΝ', 'ΦΕΒ', 'ΜΑΡ', 'ΑΠΡ', 'ΜΑΙ', 'ΙΟΥΝ', 'ΙΟΥΛ', 'ΑΥΓ', 'ΣΕΠΤ', 'ΟΚΤ', 'ΝΟΕΜΒ', 'ΔΕΚΕΜ']
-
+    # preprocess data by year
     for idx in range(0, len(local_file_database), 3):
+        # initialize a dataframe holder for temporary data
         result = pandas.DataFrame()
-
+        # loop for every month
         for month in months:
+            # hold the year of the data
             year = local_file_database[idx][0:4]
-
+            # import the data grouped by country
             arr = pandas.read_excel(pathlib.Path(str(pathlib.Path().absolute()) +
                                                  '\\scraper_data\\' + local_file_database[idx + 1]), header=None,
                                     index_col=False).dropna().drop(columns=[0])
-            arr = arr[arr[8] == 'ΙΑΝ'].reset_index(drop=True)
+            # arrivals by country - preprocessing
+            arr = arr[arr[8] == month].reset_index(drop=True)
+            # delete every dot from first column
             arr[1] = arr[1].map(lambda x: x.rstrip('.'))
+            # TODO: sum up previous index data and subtract them from next index
             arr = arr[arr[1].to_numpy(dtype=numpy.int64) > arr.index]
+            # round floating data to nearest integer value
             arr[4] = numpy.round(arr[4].astype(numpy.float64)).astype(numpy.int64)
+            # convert column 7 data from string to floating point values
             arr[7] = arr[7].astype(numpy.float16)
+            # drop unused columns and rename the rest for readability
             arr = arr.drop(columns=[1, 3, 5, 6, 8]).rename(columns={2: "country", 4: "tourists", 7: "percentage"})
-
+            # arrivals by means of transportation - preprocessing
             tr = pandas.read_excel(pathlib.Path(str(pathlib.Path().absolute()) +
                                                 '\\scraper_data\\' + local_file_database[idx]), header=None,
                                    index_col=False).dropna().drop(columns=[0])
-            tr = tr[tr[8] == 'ΙΑΝ'].reset_index(drop=True)
+            # drop unused column
+            tr = tr[tr[8] == month].reset_index(drop=True)
+            # delete every dot from first column
             tr[1] = tr[1].map(lambda x: x.rstrip('.'))
+            # TODO: sum up previous index data and subtract them from next index
             tr = tr[tr[1].to_numpy(dtype=numpy.int64) > tr.index]
+            # drop unused columns and rename the rest for readability
             tr = tr.drop(columns=[1, 7, 8]).rename(
                 columns={2: "country", 3: "airplane", 4: "train", 5: "ship", 6: "car"})
+            # convert floating point values into integer values
             tr["airplane"] = numpy.round(tr["airplane"].astype(numpy.float64)).astype(numpy.int64)
             tr["train"] = numpy.round(tr["train"].astype(numpy.float64)).astype(numpy.int64)
             tr["ship"] = numpy.round(tr["ship"].astype(numpy.float64)).astype(numpy.int64)
             tr["car"] = numpy.round(tr["car"].astype(numpy.float64)).astype(numpy.int64)
-
+            # merge the 2 previous dataframes into a single one
             month_df = pandas.merge(arr, tr, on='country')
+            # initialize a new column which is equal to the month of the data
             month_df['month'] = month
+            # initialize month column
             result = pandas.concat([result, month_df])
-
+        # initialize year column
         result['year'] = numpy.int16(year)
+        # concatenate the year data with the whole dataset
         data = pandas.concat([data, result])
-
+    # reset index of dataframe
     data = data.reset_index(drop=True)
-
+    # create directory for preprocessed data
     if not os.path.exists(str(pathlib.Path().absolute()) + '\\preprocessed_data'):
         os.makedirs(str(pathlib.Path().absolute()) + '\\preprocessed_data')
-
+    # initialize filename variable
     filename = pathlib.Path(str(pathlib.Path().absolute()) + '\\preprocessed_data\\data.csv')
-
+    # save file if not exists
     if not filename.is_file():
         data.to_csv(str(pathlib.Path().absolute()) + '\\preprocessed_data\\data.csv', index=False, encoding='utf-8-sig')
 
 
+# convert files int utf8 [code found from:
+# https://stackoverflow.com/questions/8898294/convert-utf-8-with-bom-to-utf-8-with-no-bom-in-python]
 def encode_file():
     BUFSIZE = 4096
     BOMLEN = len(codecs.BOM_UTF8)
@@ -169,6 +193,7 @@ def graph_4():
     matplotlib.pyplot.savefig('graph_4.png')
 
 
+# function that exports requested graphs
 def export_graph_data():
     graph_1()
     graph_2()
@@ -176,6 +201,7 @@ def export_graph_data():
     graph_4()
 
 
+# function that inserts dataframe row into mysql table
 def insert2mysql(id, country, tourists, percentage, airplane, train, ship, car, month, year):
     try:
         connection = mysql.connector.connect(host='localhost',
@@ -199,6 +225,7 @@ def insert2mysql(id, country, tourists, percentage, airplane, train, ship, car, 
             connection.close()
 
 
+# function that connects with mysql and performs the requested uploading
 def upload2mysql(evaluate):
     # create database
     try:
@@ -261,12 +288,13 @@ def upload2mysql(evaluate):
     # create cursor
     cursor = connection.cursor()
 
+    # perform insertions into mysql table
     for id in range(data.shape[0]):
         country, tourists, percentage, airplane, train, ship, car, month, year = data.iloc[id]
         insert2mysql(int(id), country, int(tourists), float(percentage), int(airplane), int(train), int(ship),
                      int(car), month, int(year))
 
-    # evaluate
+    # evaluate the correctness of the code above by selecting first 20 rows of the created mysql table
     if evaluate:
         sql = "SELECT * FROM records LIMIT 20"
         cursor.execute(sql)
@@ -281,41 +309,54 @@ def upload2mysql(evaluate):
     connection.close()
 
 
+# function that does the scraping
 def scrap_elstat_data():
+    # cartesian product of all combinations in given lists
     arrivals_itr_product = itertools.product(['https://www.statistics.gr/el/statistics/-/publication/STO04/'],
                                              numpy.arange(2011, 2016, dtype=numpy.int64).tolist(),
                                              ['-Q4'])
-
+    # generate the urls
     links = list()
+    # generate the filenames
     ids = list()
 
+    # concatenate elements in tuple
     for tpl in arrivals_itr_product:
         link = "".join(list(map("".join, list(str(element) for element in tpl))))
         links.append(link)
         ids.append(str(tpl[1]))
-
+    # scrap elstat
     for link in links:
+        # request the html code
         data = requests.get(link).text
+        # parse the html code with BeautifulSoup
         soup = BeautifulSoup(data, 'lxml')
+        # find the division that contains the xlsx links
         table = soup.find('div', {"id": "_documents_WAR_publicationsportlet_INSTANCE_VBZOni0vs5VJ_"})
+        # trace the table with the files
         rows = table.find_all('tr', recursive=True)
+        # download every file that is contained in the table
         for row in rows:
+            # trace the link
             r = requests.get(row.find('a').get('href'))
+            # load the requested file link into an xlrd workbook
             workbook_xlrd = xlrd.open_workbook(file_contents=r.content)
+            # convert xlrd workbook into pandas DataFrame
             workbook_df = pandas.concat(xlrd2dataframe(workbook_xlrd, workbook_xlrd.sheet_names()), ignore_index=True)
-
+            # create directory to store scraped data
             if not os.path.exists(str(pathlib.Path().absolute()) + '\\scraper_data'):
                 os.makedirs(str(pathlib.Path().absolute()) + '\\scraper_data')
-
+            # initialize filename for the newly scraped xlsx file
             filename = pathlib.Path(str(pathlib.Path().absolute()) + '\\scraper_data\\' + ids[0] + '-' +
                                     slugify(''.join(c for c in row.text.strip() if not c.isdigit())) + '.xlsx')
-
+            # save dataframe if not exists
             if not filename.is_file():
                 workbook_df.to_excel(filename)
 
         del ids[0]
 
 
+# driver function
 def main():
     scrap_elstat_data()
     preprocess_data()
@@ -324,5 +365,6 @@ def main():
     export_graph_data()
 
 
+# main thread
 if __name__ == '__main__':
     main()
