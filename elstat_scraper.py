@@ -105,7 +105,6 @@ def graph_1():
     for idx, year in enumerate(range(2011, 2016)):
         x[idx] = int(year)
         y[idx] = int(sum(data[data.year == year].tourists))
-    labels = x
     matplotlib.pyplot.plot(x, y)
     matplotlib.pyplot.xlabel('Year')
     matplotlib.pyplot.ylabel('Tourists')
