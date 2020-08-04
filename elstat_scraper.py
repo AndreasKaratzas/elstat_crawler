@@ -199,8 +199,8 @@ def graph_4():
 
 # function that exports requested graphs
 def export_graph_data():
-    # graph_1()
-    # graph_2()
+    graph_1()
+    graph_2()
     graph_3()
     graph_4()
 
@@ -363,10 +363,10 @@ def scrap_elstat_data():
 
 # driver function
 def main():
-    # scrap_elstat_data()
-    # preprocess_data()
-    # encode_file()
-    # upload2mysql(evaluate=True)
+    scrap_elstat_data()
+    preprocess_data()
+    encode_file()
+    upload2mysql(evaluate=True)
     export_graph_data()
 
 
