@@ -50,7 +50,7 @@ def preprocess_data():
             arr = arr[arr[8] == month].reset_index(drop=True)
             # delete every dot from first column
             arr[1] = arr[1].map(lambda x: x.rstrip('.'))
-            # TODO: sum up previous index data and subtract them from next index
+            # drop duplicates
             arr = arr[arr[1].to_numpy(dtype=numpy.int64) > arr.index]
             # round floating data to nearest integer value
             arr[4] = numpy.round(arr[4].astype(numpy.float64)).astype(numpy.int64)
@@ -66,7 +66,7 @@ def preprocess_data():
             tr = tr[tr[8] == month].reset_index(drop=True)
             # delete every dot from first column
             tr[1] = tr[1].map(lambda x: x.rstrip('.'))
-            # TODO: sum up previous index data and subtract them from next index
+            # drop duplicates
             tr = tr[tr[1].to_numpy(dtype=numpy.int64) > tr.index]
             # drop unused columns and rename the rest for readability
             tr = tr.drop(columns=[1, 7, 8]).rename(
@@ -129,7 +129,9 @@ def graph_1():
     for idx, year in enumerate(range(2011, 2016)):
         x[idx] = int(year)
         y[idx] = int(sum(data[data.year == year].tourists))
+    matplotlib.pyplot.figure(figsize=(10, 10))
     matplotlib.pyplot.plot(x, y)
+    matplotlib.pyplot.xticks(x, numpy.arange(2011, 2016, dtype=numpy.int64))
     matplotlib.pyplot.xlabel('Year')
     matplotlib.pyplot.ylabel('Tourists')
     matplotlib.pyplot.savefig('graph_1.png')
@@ -159,11 +161,12 @@ def graph_3():
     # import data
     filename = pathlib.Path(str(pathlib.Path().absolute()) + '\\preprocessed_data\\data.csv')
     data = pandas.read_csv(filename)
-    x = numpy.arange(1, len(data.columns[3:7]) + 1, dtype=numpy.int64)
+    x = numpy.arange(len(data.columns[3:7]), dtype=numpy.int64)
     y = numpy.zeros(4, dtype=numpy.int64)
     for idx, tr_way in enumerate(data.columns[3:7]):
         y[idx] = sum(data[tr_way])
     labels = data.columns[3:7]
+    matplotlib.pyplot.figure(figsize=(15, 10))
     matplotlib.pyplot.plot(x, y)
     matplotlib.pyplot.xticks(x, labels, rotation=45)
     matplotlib.pyplot.margins(0.01)
@@ -178,12 +181,13 @@ def graph_4():
     filename = pathlib.Path(str(pathlib.Path().absolute()) + '\\preprocessed_data\\data.csv')
     data = pandas.read_csv(filename)
     quarters = numpy.split(data.month.unique(), 4)
-    x = numpy.arange(1, len(quarters) + 1, dtype=numpy.int64)
+    x = numpy.arange(len(quarters), dtype=numpy.int64)
     y = numpy.zeros(4, dtype=numpy.int64)
     labels = list()
     for idx, quarter in enumerate(quarters):
         y[idx] = sum(data[data.month.isin(list(quarter))].tourists)
         labels.append(' '.join(list(quarter)))
+    matplotlib.pyplot.figure(figsize=(15, 10))
     matplotlib.pyplot.plot(x, y)
     matplotlib.pyplot.xticks(x, labels, rotation=45)
     matplotlib.pyplot.margins(0.01)
@@ -195,8 +199,8 @@ def graph_4():
 
 # function that exports requested graphs
 def export_graph_data():
-    graph_1()
-    graph_2()
+    # graph_1()
+    # graph_2()
     graph_3()
     graph_4()
 
@@ -250,6 +254,7 @@ def upload2mysql(evaluate):
                                              host='127.0.0.1',
                                              db='elstat')
         cursor = connection.cursor()
+        cursor.execute("DROP TABLE IF EXISTS records;")
         cursor.execute("CREATE TABLE records ( "
                        "id INT NOT NULL, "
                        "country VARCHAR(30) NOT NULL, "
@@ -358,10 +363,10 @@ def scrap_elstat_data():
 
 # driver function
 def main():
-    scrap_elstat_data()
-    preprocess_data()
-    encode_file()
-    upload2mysql(evaluate=True)
+    # scrap_elstat_data()
+    # preprocess_data()
+    # encode_file()
+    # upload2mysql(evaluate=True)
     export_graph_data()
 
 
