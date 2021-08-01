@@ -250,7 +250,7 @@ def upload2mysql(evaluate):
             print(err)
     # create table
     try:
-        connection = mysql.connector.connect(user='root', password='CeiD/16.',
+        connection = mysql.connector.connect(user='root', password='********',
                                              host='127.0.0.1',
                                              db='elstat')
         cursor = connection.cursor()
@@ -287,7 +287,7 @@ def upload2mysql(evaluate):
     # Connect to the database
     connection = mysql.connector.connect(host='localhost',
                                          user='root',
-                                         password='CeiD/16.',
+                                         password='********',
                                          db='elstat')
 
     # create cursor
