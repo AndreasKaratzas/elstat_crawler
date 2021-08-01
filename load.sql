@@ -1,0 +1,1 @@
+LOAD DATA LOCAL INFILE 'C:\\Users\\andreas\\PycharmProjects\\example_crawler\\preprocessed_data\\data.csv' INTO TABLE records CHARACTER SET utf8mb4 FIELDS TERMINATED BY ',' LINES TERMINATED BY '\n' IGNORE 1 ROWS;
